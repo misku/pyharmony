@@ -337,6 +337,39 @@ def show_current_activity(args):
         print('Unknown')
 
 
+def activity_name(config, activity_id):
+    """Looks up an activity in the config, returning its name.
+
+    Args:
+        config (dict): Dictionary object containing configuration information obtained from function ha_get_config.
+        activity_id (int): Harmony ID of the activity.
+
+    Returns:
+        The name of the activity, or None if not found.
+    """
+
+    ids_and_labels = dict([(int(a['id']), a['label']) for a in config['activity']])
+    return ids_and_labels.get(int(activity_id))
+
+
+def activity_id(config, activity):
+    """Looks up an activity in the config, returning its ID.
+
+    Args:
+        config (dict): Dictionary object containing configuration information obtained from function ha_get_config.
+        activity (string/int): Harmony name of the activity. Providing an ID returns itself.
+
+    Returns:
+        The ID of the activity, or None if not found.
+    """
+
+    if activity.isdigit() or activity == '-1':
+        if activity_name(config, activity):
+            return activity
+    labels_and_ids = dict([(a['label'].lower(), int(a['id'])) for a in config['activity']])
+    return labels_and_ids.get(activity.lower())
+
+
 def start_activity(args):
     """Connects to Harmony Hub and starts an activity
 
