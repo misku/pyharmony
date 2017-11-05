@@ -38,7 +38,7 @@ def get_client(ip, port, activity_callback=None):
         object: Authenticated client instance.
     """
 
-    client = harmony_client.create_and_connect_client(ip, port)
+    client = harmony_client.create_and_connect_client(ip, port, activity_callback)
     return client
 
 
