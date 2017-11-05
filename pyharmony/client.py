@@ -5,8 +5,11 @@
 
 import json
 import time
+import re
 import sleekxmpp
 from sleekxmpp.xmlstream import ET
+from sleekxmpp.xmlstream.handler.callback import Callback
+from sleekxmpp.xmlstream.matcher.base import MatcherBase
 import logging
 
 logger = logging.getLogger(__name__)
@@ -199,13 +202,37 @@ class HarmonyClient(sleekxmpp.ClientXMPP):
         else:
             return True
 
+    def register_activity_callback(self, activity_callback):
+        """Register a callback that is executed on activity changes."""
+        def hub_event(xml):
+            match = re.match('activityId=(-?\d+).*errorCode=200', xml.get_payload()[0].text)
+            activity_id = match.group(1)
+            if activity_id is not None:
+                activity_callback(int(activity_id))
 
-def create_and_connect_client(ip_address, port):
+        self.registerHandler(Callback('Activity Finished', MatchHarmonyEvent('startActivityFinished'), hub_event))
+
+
+class MatchHarmonyEvent(MatcherBase):
+    def match(self, xml):
+        """Check if a stanza matches the Harmony event criteria."""
+        payload = xml.get_payload()
+        if len(payload) == 1:
+            msg = payload[0]
+            if msg.tag == '{connect.logitech.com}event' and msg.attrib['type'] == 'harmony.engine?' + self._criteria:
+                return True
+        return False
+
+
+def create_and_connect_client(ip_address, port, activity_callback=None):
+
     """Creates a Harmony client and initializes session.
 
     Args:
         ip_address (str): Harmony device IP address
         port (str): Harmony device port
+        activity_callback (function): Function to call when the current activity has changed.
+
 
     Returns:
         A connected HarmonyClient instance
@@ -214,6 +241,9 @@ def create_and_connect_client(ip_address, port):
     client.connect(address=(ip_address, port),
                    use_tls=False, use_ssl=False)
     client.process(block=False)
+    client.whitespace_keepalive_interval = 30
+    if activity_callback:
+        client.register_activity_callback(activity_callback)
     while not client.sessionstarted:
         time.sleep(0.1)
     return client

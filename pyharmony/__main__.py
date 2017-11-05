@@ -26,16 +26,18 @@ def pprint(obj):
     print(json.dumps(obj, sort_keys=True, indent=4, separators=(',', ': ')))
 
 
-def get_client(ip, port):
+def get_client(ip, port, activity_callback=None):
     """Connect to the Harmony and return a Client instance.
 
     Args:
         harmony_ip (str): Harmony hub IP address
         harmony_port (str): Harmony hub port
+        activity_callback (function): Function to call when the current activity has changed.
 
     Returns:
         object: Authenticated client instance.
     """
+
     client = harmony_client.create_and_connect_client(ip, port)
     return client
 
