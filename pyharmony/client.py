@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 class HarmonyClient(sleekxmpp.ClientXMPP):
     """An XMPP client for connecting to the Logitech Harmony devices."""
 
-    def __init__(self, auth_token):
-        user = '%s@connect.logitech.com/gatorade.' % auth_token
-        password = auth_token
+    def __init__(self):
+        user = 'user@connect.logitech.com/gatorade.'
+        password = 'password'
         plugin_config = {
             # Enables PLAIN authentication which is off by default.
             'feature_mechanisms': {'unencrypted_plain': True},
@@ -200,18 +200,17 @@ class HarmonyClient(sleekxmpp.ClientXMPP):
             return True
 
 
-def create_and_connect_client(ip_address, port, token):
+def create_and_connect_client(ip_address, port):
     """Creates a Harmony client and initializes session.
 
     Args:
         ip_address (str): Harmony device IP address
         port (str): Harmony device port
-        token (str): Valid session token
 
     Returns:
         A connected HarmonyClient instance
     """
-    client = HarmonyClient(token)
+    client = HarmonyClient()
     client.connect(address=(ip_address, port),
                    use_tls=False, use_ssl=False)
     client.process(block=False)

@@ -6,7 +6,6 @@
 import argparse
 import json
 import logging
-from pyharmony import auth as harmony_auth
 from pyharmony import client as harmony_client
 from pyharmony import discovery as harmony_discovery
 import sys
@@ -37,20 +36,12 @@ def get_client(ip, port):
     Returns:
         object: Authenticated client instance.
     """
-    token = harmony_auth.get_auth_token(ip, port)
-    client = harmony_client.create_and_connect_client(ip, port, token)
+    client = harmony_client.create_and_connect_client(ip, port)
     return client
 
 
-# Functions for use when module is imported
-
-
-def ha_get_token(ip, port):
-    token = harmony_auth.get_auth_token(ip, port)
-    return token
-
-
-def ha_get_client(token, ip, port):
+# Functions for use when module is imported by Home Assistant
+def ha_get_client(ip, port):
     """Connect to the Harmony and return a Client instance.
 
     Args:
@@ -61,11 +52,11 @@ def ha_get_client(token, ip, port):
     Returns:
         object: Authenticated client instance.
     """
-    client = harmony_client.create_and_connect_client(ip, port, token)
+    client = harmony_client.create_and_connect_client(ip, port)
     return client
 
 
-def ha_get_config(token, ip, port):
+def ha_get_config(ip, port):
     """Connects to the Harmony and generates a dictionary containing all activites and commands programmed to hub.
 
     Args:
@@ -77,7 +68,7 @@ def ha_get_config(token, ip, port):
     Returns:
         Dictionary containing Harmony device configuration
     """
-    client = ha_get_client(token, ip, port)
+    client = ha_get_client(ip, port)
     config = client.get_config()
     client.disconnect(send_close=True)
     return config
@@ -126,7 +117,7 @@ def ha_get_activities(config):
         return activities
 
 
-def ha_get_current_activity(token, config, ip, port):
+def ha_get_current_activity(config, ip, port):
     """Returns Harmony hub's current activity.
 
     Args:
@@ -138,7 +129,7 @@ def ha_get_current_activity(token, config, ip, port):
     Returns:
         String containing hub's current activity.
     """
-    client = ha_get_client(token, ip, port)
+    client = ha_get_client(ip, port)
     current_activity_id = client.get_current_activity()
     client.disconnect(send_close=True)
     activity = [x for x in config['activity'] if int(x['id']) == current_activity_id][0]
@@ -149,7 +140,7 @@ def ha_get_current_activity(token, config, ip, port):
         return 'Unknown'
 
 
-def ha_start_activity(token, ip, port, config, activity):
+def ha_start_activity(ip, port, config, activity):
     """Connects to Harmony Hub and starts an activity
 
     Args:
@@ -162,7 +153,7 @@ def ha_start_activity(token, ip, port, config, activity):
     Returns:
         True if activity started, otherwise False
     """
-    client = ha_get_client(token, ip, port)
+    client = ha_get_client(ip, port)
     status = False
 
     if (activity.isdigit()) or (activity == '-1'):
@@ -193,7 +184,7 @@ def ha_start_activity(token, ip, port, config, activity):
         return False
 
 
-def ha_power_off(token, ip, port):
+def ha_power_off(ip, port):
     """Power off Harmony Hub.
 
     Args:
@@ -205,7 +196,7 @@ def ha_power_off(token, ip, port):
         True if PowerOff activity started, otherwise False
 
     """
-    client = ha_get_client(token, ip, port)
+    client = ha_get_client(ip, port)
     status = client.power_off()
     client.disconnect(send_close=True)
     if status:
@@ -215,7 +206,7 @@ def ha_power_off(token, ip, port):
         return False
 
 
-def ha_send_command(token, ip, port, device, command, repeat_num=1, delay_secs=0.4):
+def ha_send_command(ip, port, device, command, repeat_num=1, delay_secs=0.4):
     """Connects to the Harmony and send a simple command.
 
     Args:
@@ -230,7 +221,7 @@ def ha_send_command(token, ip, port, device, command, repeat_num=1, delay_secs=0
     Returns:
         Completion status
     """
-    client = ha_get_client(token, ip, port)
+    client = ha_get_client(ip, port)
     for i in range(repeat_num):
         client.send_command(device, command)
         time.sleep(delay_secs)
@@ -239,7 +230,8 @@ def ha_send_command(token, ip, port, device, command, repeat_num=1, delay_secs=0
     client.disconnect(send_close=True)
     return 0
 
-def ha_send_commands(token, ip, port, device, commands, repeat_num=1, delay_secs=0.4):
+
+def ha_send_commands(ip, port, device, commands, repeat_num=1, delay_secs=0.4):
     """Connects to the Harmony and sends multiple simple commands.
 
     Args:
@@ -254,7 +246,7 @@ def ha_send_commands(token, ip, port, device, commands, repeat_num=1, delay_secs
     Returns:
         Completion status
     """
-    client = ha_get_client(token, ip, port)
+    client = ha_get_client(ip, port)
     for i in range(repeat_num):
         for command in commands:
             client.send_command(device, command)
@@ -265,23 +257,23 @@ def ha_send_commands(token, ip, port, device, commands, repeat_num=1, delay_secs
     return 0
 
 
-def ha_sync(token, ip, port):
+def ha_sync(ip, port):
     """Syncs Harmony hub to web service.
     Args:
-        token (str): Session token obtained from hub
         ip (str): Harmony hub IP address
         port (str): Harmony hub port
 
     Returns:
         Completion status
     """
-    client = ha_get_client(token, ip, port)
+    client = ha_get_client(ip, port)
     client.sync()
     client.disconnect(send_close=True)
     return 0
 
-def ha_change_channel(token, ip, port, channel):
-    client = ha_get_client(token, ip, port)
+
+def ha_change_channel(ip, port, channel):
+    client = ha_get_client(ip, port)
     status = client.change_channel(channel)
     client.disconnect(send_close=True)
     if status:
@@ -289,6 +281,7 @@ def ha_change_channel(token, ip, port, channel):
     else:
         logger.error('Unable to change the channel')
         return False
+
 
 def ha_discover(scan_attempts, scan_interval):
     """Discovers hubs on local network.
@@ -480,7 +473,6 @@ def main():
         level=loglevels[args.loglevel],
         format='%(levelname)s:\t%(name)s\t%(message)s')
 
-    harmony_auth.logger.setLevel(loglevels[args.loglevel])
     harmony_client.logger.setLevel(loglevels[args.loglevel])
     harmony_discovery.logger.setLevel(loglevels[args.loglevel])
 
