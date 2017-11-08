@@ -205,7 +205,7 @@ class HarmonyClient(sleekxmpp.ClientXMPP):
     def register_activity_callback(self, activity_callback):
         """Register a callback that is executed on activity changes."""
         def hub_event(xml):
-            match = re.match('activityId=(-?\d+).*errorCode=200', xml.get_payload()[0].text)
+            match = re.search('activityId=(-?\d+)', xml.get_payload()[0].text)
             activity_id = match.group(1)
             if activity_id is not None:
                 activity_callback(int(activity_id))
