@@ -239,10 +239,11 @@ def create_and_connect_client(ip_address, port, activity_callback=None, connect_
     """
     client = HarmonyClient()
     i = 0
-    while (i < connect_attempts):
+    connected = False
+    while (i < connect_attempts and not connected):
         i = i + 1
-        client.connect(address=(ip_address, port),
-                       use_tls=False, use_ssl=False, reattempt=False)
+        connected = client.connect(address=(ip_address, port),
+                                   use_tls=False, use_ssl=False, reattempt=False)
     if i == connect_attempts:
         logger.error("Failed to connect to %s:%s after %d tries" % (ip_address,port,i))
         client.disconnect(send_close=True)
