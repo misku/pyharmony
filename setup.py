@@ -20,13 +20,13 @@ requirements = [x.strip() for x in open(here('requirements.txt')).readlines()]
 
 setup(
     name='pyharmony',
-    version='1.0.18',
+    version='1.0.19',
     description='Python library for programmatically using a Logitech Harmony Link or Ultimate Hub.',
     long_description=readme,
     author='Ian Day',
     author_email='ian236day@gmail.com',
     url='https://github.com/iandday/pyharmony',
-    download_url = 'https://github.com/iandday/pyharmony/tarball/1.0.18',
+    download_url = 'https://github.com/iandday/pyharmony/tarball/1.0.19',
     packages=['pyharmony'],
     package_dir={'pyharmony': 'pyharmony'},
     include_package_data=True,
