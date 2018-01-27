@@ -96,7 +96,8 @@ def ha_write_config_file(config, path):
             file_out.write('  ' + device['id'] + ' - ' + device['label'] + '\n')
             for controlGroup in device['controlGroup']:
                 for function in controlGroup['function']:
-                    file_out.write('    ' + function['name'] + '\n')
+                    action = json.loads(function['action'])
+                    file_out.write('    ' + action['command'] + '\n')
     return True
 
 
