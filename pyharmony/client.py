@@ -224,7 +224,7 @@ class MatchHarmonyEvent(MatcherBase):
         return False
 
 
-def create_and_connect_client(ip_address, port, activity_callback=None):
+def create_and_connect_client(ip_address, port, activity_callback=None, connect_attempts=5):
 
     """Creates a Harmony client and initializes session.
 
@@ -238,8 +238,15 @@ def create_and_connect_client(ip_address, port, activity_callback=None):
         A connected HarmonyClient instance
     """
     client = HarmonyClient()
-    client.connect(address=(ip_address, port),
-                   use_tls=False, use_ssl=False)
+    i = 0
+    while (i < connect_attempts):
+        i = i + 1
+        client.connect(address=(ip_address, port),
+                       use_tls=False, use_ssl=False, reattempt=False)
+    if i == connect_attempts:
+        logger.error("Failed to connect to %s:%s after %d tries" % (ip_address,port,i))
+        client.disconnect(send_close=True)
+        return False
     client.process(block=False)
     client.whitespace_keepalive_interval = 30
     if activity_callback:
