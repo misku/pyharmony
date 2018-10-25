@@ -133,12 +133,13 @@ class HarmonyClient(sleekxmpp.ClientXMPP):
         payload = result.get_payload()
         assert len(payload) == 1
 
-    def send_command(self, device, command):
+    def send_command(self, device, command, command_delay=0):
         """Send a simple command to the Harmony Hub.
 
         Args:
             device_id (str): Device ID from Harmony Hub configuration to control
             command (str): Command from Harmony Hub configuration to control
+            command_delay (int): Delay in seconds between sending the press command and the release command.
 
         Returns:
             None if successful
@@ -153,6 +154,8 @@ class HarmonyClient(sleekxmpp.ClientXMPP):
         action_cmd.text = 'action={"type"::"IRCommand","deviceId"::"' + device + '","command"::"' + command + '"}:status=press'
         iq_cmd.set_payload(action_cmd)
         result = iq_cmd.send(block=False)
+
+        time.sleep(command_delay)
 
         action_cmd.attrib['mime'] = (
             'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction')
