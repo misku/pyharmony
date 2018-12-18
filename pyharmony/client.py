@@ -6,60 +6,133 @@
 import json
 import time
 import re
+import asyncio
+import websockets
+from aiohttp import ClientSession
+
 import sleekxmpp
 from sleekxmpp.xmlstream import ET
 from sleekxmpp.xmlstream.handler.callback import Callback
 from sleekxmpp.xmlstream.matcher.base import MatcherBase
 import logging
 
+DEFAULT_CMD = 'vnd.logitech.connect'
+DEFAULT_DISCOVER_STRING = '_logitech-reverse-bonjour._tcp.local.'
+DEFAULT_HUB_PORT = '8088'
+
 logger = logging.getLogger(__name__)
 
-class HarmonyClient(sleekxmpp.ClientXMPP):
-    """An XMPP client for connecting to the Logitech Harmony devices."""
+class HarmonyClient():
+    """An websocket client for connecting to the Logitech Harmony devices."""
 
-    def __init__(self):
-        user = 'user@connect.logitech.com/gatorade.'
-        password = 'password'
-        plugin_config = {
-            # Enables PLAIN authentication which is off by default.
-            'feature_mechanisms': {'unencrypted_plain': True},
+    def __init__(self, ip_address):
+        self._ip_address = ip_address
+        self._friendly_name = None
+        self._remote_id = None
+        self._email = None
+        self._account_id = None
+        self._websocket = None
+
+    async def retrieve_hub_info(self):
+        """Retrieve the harmony Hub information."""
+        logger.debug("Retrieving Harmony Hub information.")
+        url = 'http://{}:{}/'.format(self._ip_address, DEFAULT_HUB_PORT)
+        headers = {
+            'Origin': 'http://localhost.nebula.myharmony.com',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Accept-Charset': 'utf-8',
         }
-        super(HarmonyClient, self).__init__(
-            user, password, plugin_config=plugin_config)
+        json_request = {
+            "id ": 1,
+            "cmd": "connect.discoveryinfo?get",
+            "params": {}
+        }
+        async with ClientSession() as session:
+            async with session.post(
+                url, json=json_request, headers=headers) as response:
+                json_response = await response.json()
+                self._friendly_name = json_response['data']['friendlyName']
+                self._remote_id = str(json_response['data']['remoteId'])
+                self._email = json_response['data']['email']
+                self._account_id = str(json_response['data']['accountId'])
 
-    def get_config(self):
+    async def connect(self):
+            """Connect to Hub Web Socket"""
+
+            # Return connected if we are already connected.
+            if self._websocket:
+                return True
+
+            logger.debug("Starting connect.")
+            if self._remote_id is None:
+                # We do not have the remoteId yet, get it first.
+                await self.retrieve_hub_info()
+
+            if self._remote_id is None:
+                #No remote ID means no connect.
+                return False
+
+            logger.debug("Connecting to %s for hub %s",
+                         self._ip_address, self._remote_id)
+            self._websocket = await websockets.connect(
+                'ws://{}:{}/?domain=svcs.myharmony.com&hubId={}'.format(
+                    self._ip_address, DEFAULT_HUB_PORT, self._remote_id
+                )
+            )
+
+            response = await self._send_request(
+                '{}/vnd.logitech.statedigest?get'.format(DEFAULT_CMD)
+            )
+
+            if response['code'] != 200:
+                await self.disconnect()
+                return False
+
+            self._current_activity = response['data']['activityId']
+            return True
+
+    async def disconnect(self, send_close=None):
+        """Disconnect from Hub"""
+        logger.debug("Disconnecting")
+        await self._websocket.close()
+        await self._websocket.wait_closed()
+        self._websocket = None
+
+    async def _send_request(self, command, params=None):
+        """Send a payload request to Harmony Hub and return json response."""
+        payload = {
+            "hubId"  : self._remote_id,
+            "timeout": 30,
+            "hbus"   : {
+                "cmd": command,
+                "id" : 123,
+                "params": {
+                    "verb": "get",
+                    "format": "json"
+                }
+            }
+        }
+
+        logger.debug("Sending payload: %s", payload)
+        await self._websocket.send(json.dumps(payload))
+
+        response = await self._websocket.recv()
+        logger.debug("Received response: %s", response)
+        return json.loads(response)
+
+    async def get_config(self):
         """Retrieves the Harmony device configuration.
 
         Returns:
             A nested dictionary containing activities, devices, etc.
         """
-        iq_cmd = self.Iq()
-        iq_cmd['type'] = 'get'
-        action_cmd = ET.Element('oa')
-        action_cmd.attrib['xmlns'] = 'connect.logitech.com'
-        action_cmd.attrib['mime'] = (
-            'vnd.logitech.harmony/vnd.logitech.harmony.engine?config')
-        iq_cmd.set_payload(action_cmd)
-        retries = 3
-        attempt = 0
+        response = await self._send_request(
+            'vnd.logitech.harmony/vnd.logitech.harmony.engine?config'
+        )
 
-        for _ in range(retries):
-            try:
-                result = iq_cmd.send(block=True)
-                break
-            except Exception:
-                logger.critical('XMPP timeout, reattempting')
-                attempt += 1
-                pass
-        if attempt == 3:
-            raise ValueError('XMPP timeout with hub')
-
-        payload = result.get_payload()
-        assert len(payload) == 1
-        action_cmd = payload[0]
-        assert action_cmd.attrib['errorcode'] == '200'
-        device_list = action_cmd.text
-        return json.loads(device_list)
+        assert response['code'] == 200
+        return response['data']
 
     def get_current_activity(self):
         """Retrieves the current activity ID.
@@ -227,7 +300,9 @@ class MatchHarmonyEvent(MatcherBase):
         return False
 
 
-def create_and_connect_client(ip_address, port, activity_callback=None, connect_attempts=5):
+async def create_and_connect_client(ip_address, port=None,
+                                    activity_callback=None,
+                                    connect_attempts=5):
 
     """Creates a Harmony client and initializes session.
 
@@ -240,21 +315,17 @@ def create_and_connect_client(ip_address, port, activity_callback=None, connect_
     Returns:
         A connected HarmonyClient instance
     """
-    client = HarmonyClient()
+    client = HarmonyClient(ip_address)
     i = 0
     connected = False
     while (i < connect_attempts and not connected):
         i = i + 1
-        connected = client.connect(address=(ip_address, port),
-                                   use_tls=False, use_ssl=False, reattempt=False)
+        connected = await client.connect()
     if i == connect_attempts:
-        logger.error("Failed to connect to %s:%s after %d tries" % (ip_address,port,i))
-        client.disconnect(send_close=True)
+        logger.error("Failed to connect to %s after %d tries" % (ip_address,i))
+        await client.disconnect()
         return False
-    client.process(block=False)
-    client.whitespace_keepalive_interval = 30
+
     if activity_callback:
         client.register_activity_callback(activity_callback)
-    while not client.sessionstarted:
-        time.sleep(0.1)
     return client

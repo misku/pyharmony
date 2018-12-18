@@ -6,6 +6,7 @@
 import argparse
 import json
 import logging
+import asyncio
 from pyharmony import client as harmony_client
 from pyharmony import discovery as harmony_discovery
 import sys
@@ -21,12 +22,27 @@ logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.getLogger('pyharmony').setLevel(logging.CRITICAL)
 
 
+def run_in_loop_now(name, func):
+    # Get current loop, creates loop if none exist.
+    loop = asyncio.get_event_loop()
+
+    func_task = asyncio.ensure_future(func)
+    if loop.is_running():
+        # We're in a loop, task was added and we're good.
+        logger.debug("Task %s added to loop", name)
+        return func_task
+
+    # We're not in a loop, execute it.
+    logger.debug("Executing task %s", name)
+    loop.run_until_complete(func_task)
+    return func_task.result()
+
 def pprint(obj):
     """Pretty JSON dump of an object."""
     print(json.dumps(obj, sort_keys=True, indent=4, separators=(',', ': ')))
 
 
-def get_client(ip, port, activity_callback=None):
+def get_client(ip, port=None, activity_callback=None):
     """Connect to the Harmony and return a Client instance.
 
     Args:
@@ -37,9 +53,9 @@ def get_client(ip, port, activity_callback=None):
     Returns:
         object: Authenticated client instance.
     """
-
-    client = harmony_client.create_and_connect_client(ip, port, activity_callback)
-    return client
+    func = harmony_client.create_and_connect_client(ip, port,
+                                                    activity_callback)
+    return run_in_loop_now('get_client', func)
 
 
 # Functions for use when module is imported by Home Assistant
@@ -308,9 +324,17 @@ def show_config(args):
 
     """
 
-    client = get_client(args.harmony_ip, args.harmony_port)
-    config = client.get_config()
-    client.disconnect(send_close=True)
+
+    client = get_client(args.harmony_ip)
+
+    if not client:
+        return
+
+    func = client.get_config()
+    config = run_in_loop_now('get_config', func)
+
+    func = client.disconnect()
+    run_in_loop_now('disconnect', func)
     pprint(config)
 
 
@@ -511,6 +535,7 @@ def main():
 
     harmony_client.logger.setLevel(loglevels[args.loglevel])
     harmony_discovery.logger.setLevel(loglevels[args.loglevel])
+    logger.setLevel(loglevels[args.loglevel])
 
     if args.discover:
         sys.exit(discover(args))
