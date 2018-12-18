@@ -13,14 +13,6 @@ import sys
 import time
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR)
-
-# Trim down log file spam
-logging.getLogger('sleekxmpp').setLevel(logging.CRITICAL)
-logging.getLogger('requests').setLevel(logging.CRITICAL)
-logging.getLogger('urllib3').setLevel(logging.CRITICAL)
-logging.getLogger('pyharmony').setLevel(logging.CRITICAL)
-
 
 def run_in_loop_now(name, func):
     # Get current loop, creates loop if none exist.

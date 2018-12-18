@@ -4,16 +4,11 @@
 """Client class for connecting to Logitech Harmony devices."""
 
 import json
-import time
 import re
 import asyncio
 import websockets
 from aiohttp import ClientSession
 
-import sleekxmpp
-from sleekxmpp.xmlstream import ET
-from sleekxmpp.xmlstream.handler.callback import Callback
-from sleekxmpp.xmlstream.matcher.base import MatcherBase
 import logging
 
 DEFAULT_CMD = 'vnd.logitech.connect'
@@ -312,15 +307,15 @@ class HarmonyClient():
         self.registerHandler(Callback('Activity Finished', MatchHarmonyEvent('startActivityFinished'), hub_event))
 
 
-class MatchHarmonyEvent(MatcherBase):
-    def match(self, xml):
-        """Check if a stanza matches the Harmony event criteria."""
-        payload = xml.get_payload()
-        if len(payload) == 1:
-            msg = payload[0]
-            if msg.tag == '{connect.logitech.com}event' and msg.attrib['type'] == 'harmony.engine?' + self._criteria:
-                return True
-        return False
+# class MatchHarmonyEvent(MatcherBase):
+#     def match(self, xml):
+#         """Check if a stanza matches the Harmony event criteria."""
+#         payload = xml.get_payload()
+#         if len(payload) == 1:
+#             msg = payload[0]
+#             if msg.tag == '{connect.logitech.com}event' and msg.attrib['type'] == 'harmony.engine?' + self._criteria:
+#                 return True
+#         return False
 
 
 async def create_and_connect_client(ip_address, port=None,
