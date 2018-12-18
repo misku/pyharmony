@@ -484,15 +484,14 @@ def send_command(args):
     for i in range(args.repeat_num):
         func = client.send_command(args.device_id, args.command,
                                    args.hold_secs)
-        config = run_in_loop_now('send_command', func)
+        run_in_loop_now('send_command', func)
 
         time.sleep(args.delay_secs)
 
     func = client.disconnect()
-    if run_in_loop_now('disconnect', func):
-        print('Command Sent')
-    else:
-        print('Failed to send command')
+    run_in_loop_now('disconnect', func)
+
+    print('Command Sent')
 
 def change_channel(args):
     """Change channel

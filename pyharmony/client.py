@@ -61,7 +61,11 @@ class HarmonyClient():
         """Connect to Hub Web Socket"""
         # Return connected if we are already connected.
         if self._websocket:
-            return True
+            if self._websocket.open:
+                return True
+
+            if not self._websocket.closed:
+                await self.disconnect()
 
         logger.debug("Starting connect.")
         if self._remote_id is None:
@@ -134,6 +138,7 @@ class HarmonyClient():
 
     async def _wait_response(self):
         """Await message on web socket"""
+        logger.debug("Waiting for response")
         response = await self._websocket.recv()
         logger.debug("Received response: %s", response)
         return json.loads(response)
