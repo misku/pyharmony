@@ -57,29 +57,32 @@ class HarmonyClient():
                 self._email = json_response['data']['email']
                 self._account_id = str(json_response['data']['accountId'])
 
+    async def _perform_connect(self):
+        """Connect to Hub Web Socket"""
+        # Return connected if we are already connected.
+        if self._websocket:
+            return True
+
+        logger.debug("Starting connect.")
+        if self._remote_id is None:
+            # We do not have the remoteId yet, get it first.
+            await self.retrieve_hub_info()
+
+        if self._remote_id is None:
+            #No remote ID means no connect.
+            return False
+
+        logger.debug("Connecting to %s for hub %s",
+                     self._ip_address, self._remote_id)
+        self._websocket = await websockets.connect(
+            'ws://{}:{}/?domain=svcs.myharmony.com&hubId={}'.format(
+            self._ip_address, DEFAULT_HUB_PORT, self._remote_id
+            )
+        )
+
     async def connect(self):
             """Connect to Hub Web Socket"""
-
-            # Return connected if we are already connected.
-            if self._websocket:
-                return True
-
-            logger.debug("Starting connect.")
-            if self._remote_id is None:
-                # We do not have the remoteId yet, get it first.
-                await self.retrieve_hub_info()
-
-            if self._remote_id is None:
-                #No remote ID means no connect.
-                return False
-
-            logger.debug("Connecting to %s for hub %s",
-                         self._ip_address, self._remote_id)
-            self._websocket = await websockets.connect(
-                'ws://{}:{}/?domain=svcs.myharmony.com&hubId={}'.format(
-                    self._ip_address, DEFAULT_HUB_PORT, self._remote_id
-                )
-            )
+            await self._perform_connect()
 
             response = await self._send_request(
                 '{}/vnd.logitech.statedigest?get'.format(DEFAULT_CMD)
@@ -102,6 +105,9 @@ class HarmonyClient():
     async def _send_request(self, command, params=None,
                             wait_for_response=True):
         """Send a payload request to Harmony Hub and return json response."""
+        # Make sure we're connected.
+        await self._perform_connect()
+
         if params is None:
             params = {
                 "verb"  : "get",
