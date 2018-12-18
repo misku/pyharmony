@@ -101,22 +101,29 @@ class HarmonyClient():
 
     async def _send_request(self, command, params=None):
         """Send a payload request to Harmony Hub and return json response."""
+        if params is None:
+            params = {
+                "verb"  : "get",
+                "format": "json"
+            }
+
         payload = {
             "hubId"  : self._remote_id,
             "timeout": 30,
             "hbus"   : {
                 "cmd": command,
-                "id" : 123,
-                "params": {
-                    "verb": "get",
-                    "format": "json"
-                }
+                "id" : 1022244803,
+                "params": params
             }
         }
 
         logger.debug("Sending payload: %s", payload)
         await self._websocket.send(json.dumps(payload))
 
+        return await self._wait_response()
+
+    async def _wait_response(self):
+        """Await message on web socket"""
         response = await self._websocket.recv()
         logger.debug("Received response: %s", response)
         return json.loads(response)
@@ -127,6 +134,7 @@ class HarmonyClient():
         Returns:
             A nested dictionary containing activities, devices, etc.
         """
+        logger.debug("Getting configuration")
         response = await self._send_request(
             'vnd.logitech.harmony/vnd.logitech.harmony.engine?config'
         )
@@ -134,32 +142,23 @@ class HarmonyClient():
         assert response['code'] == 200
         return response['data']
 
-    def get_current_activity(self):
+    async def get_current_activity(self):
         """Retrieves the current activity ID.
 
         Returns:
             A int with the current activity ID.
         """
-        iq_cmd = self.Iq()
-        iq_cmd['type'] = 'get'
-        action_cmd = ET.Element('oa')
-        action_cmd.attrib['xmlns'] = 'connect.logitech.com'
-        action_cmd.attrib['mime'] = (
-            'vnd.logitech.harmony/vnd.logitech.harmony.engine?getCurrentActivity')
-        iq_cmd.set_payload(action_cmd)
-        try:
-            result = iq_cmd.send(block=True)
-        except Exception:
-            logger.info('XMPP timeout, reattempting')
-            result = iq_cmd.send(block=True)
-        payload = result.get_payload()
-        assert len(payload) == 1
-        action_cmd = payload[0]
-        assert action_cmd.attrib['errorcode'] == '200'
-        activity = action_cmd.text.split("=")
-        return int(activity[1])
+        logger.debug("Retrieving current activity")
+        response = await self._send_request(
+            'vnd.logitech.harmony/vnd.logitech.harmony.engine'
+            '?getCurrentActivity'
+        )
 
-    def start_activity(self, activity_id):
+        assert response['code'] == 200
+        activity = response['data']['result']
+        return int(activity)
+
+    async def start_activity(self, activity_id):
         """Starts an activity.
 
         Args:
@@ -168,26 +167,47 @@ class HarmonyClient():
         Returns:
             True if activity started, otherwise False
         """
-        iq_cmd = self.Iq()
-        iq_cmd['type'] = 'get'
-        action_cmd = ET.Element('oa')
-        action_cmd.attrib['xmlns'] = 'connect.logitech.com'
-        action_cmd.attrib['mime'] = ('harmony.engine?startactivity')
-        cmd = 'activityId=' + str(activity_id) + ':timestamp=0'
-        action_cmd.text = cmd
-        iq_cmd.set_payload(action_cmd)
-        try:
-            result = iq_cmd.send(block=True)
-        except Exception:
-            logger.info('XMPP timeout, reattempting')
-            result = iq_cmd.send(block=True)
-        payload = result.get_payload()
-        assert len(payload) == 1
-        action_cmd = payload[0]
-        if action_cmd.text == None:
-            return True
-        else:
-            return False
+        logger.debug("Starting activity %s", activity_id)
+        params = {
+            "async": "true",
+            "timestamp": 0,
+            "args": {
+                "rule": "start"
+            },
+            "activityId": str(activity_id)
+        }
+        response = await self._send_request(
+            'harmony.activityengine?runactivity', params
+        )
+
+        # Wait for the activity to complete.
+        while True:
+            # Make sure response is related to start activity.
+            if not response.get('cmd'):
+                response = await self._wait_response()
+                continue
+
+            if response['cmd'] == 'harmony.engine?startActivityFinished':
+                return True
+
+            if response['cmd'] != 'harmony.engine?startActivity' and\
+               response['cmd'] != 'harmony.engine?helpdiscretes':
+                response = await self._wait_response()
+                continue
+
+            # Response of 200 means success.
+            if response['code'] == 200:
+                return True
+
+
+            # Response of 100 means in progress
+            # Any other response considered a failure.
+            if response['code'] != 100:
+                return False
+
+            response = await self._wait_response()
+
+
 
     def sync(self):
         """Syncs the harmony hub with the web service.
@@ -206,7 +226,7 @@ class HarmonyClient():
         payload = result.get_payload()
         assert len(payload) == 1
 
-    def send_command(self, device, command, command_delay=0):
+    async def send_command(self, device, command, command_delay=0):
         """Send a simple command to the Harmony Hub.
 
         Args:
@@ -217,64 +237,62 @@ class HarmonyClient():
         Returns:
             None if successful
         """
-        iq_cmd = self.Iq()
-        iq_cmd['type'] = 'get'
-        iq_cmd['id'] = '5e518d07-bcc2-4634-ba3d-c20f338d8927-2'
-        action_cmd = ET.Element('oa')
-        action_cmd.attrib['xmlns'] = 'connect.logitech.com'
-        action_cmd.attrib['mime'] = (
-            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction')
-        action_cmd.text = 'action={"type"::"IRCommand","deviceId"::"' + device + '","command"::"' + command + '"}:status=press'
-        iq_cmd.set_payload(action_cmd)
-        result = iq_cmd.send(block=False)
+        logger.debug("Sending command %s to device %s",
+                     command, device)
+        params = {
+            "status": "press",
+            "timestamp": '0',
+            "verb": "render",
+            "action": {
+                "command": str(command),
+                "type": "IRCommand",
+                "deviceId": str(device)
+            }
+        }
 
-        time.sleep(command_delay)
+        response = await self._send_request(
+            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction', params
+        )
 
-        action_cmd.attrib['mime'] = (
-            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction')
-        action_cmd.text = 'action={"type"::"IRCommand","deviceId"::"' + device + '","command"::"' + command + '"}:status=release'
-        iq_cmd.set_payload(action_cmd)
-        result = iq_cmd.send(block=False)
-        return result
+        if response['code'] != 200:
+            return False
 
-    def change_channel(self, channel):
+        if command_delay > 0:
+            asyncio.sleep(command_delay)
+
+        params['status'] = 'release'
+        response = await self._send_request(
+            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction', params
+        )
+        return response['code'] == 200
+
+    async def change_channel(self, channel):
         """Changes a channel.
         Args:
             channel: Channel number
         Returns:
           An HTTP 200 response (hopefully)
         """
-        iq_cmd = self.Iq()
-        iq_cmd['type'] = 'get'
-        action_cmd = ET.Element('oa')
-        action_cmd.attrib['xmlns'] = 'connect.logitech.com'
-        action_cmd.attrib['mime'] = ('harmony.engine?changeChannel')
-        cmd = 'channel=' + str(channel) + ':timestamp=0'
-        action_cmd.text = cmd
-        iq_cmd.set_payload(action_cmd)
-        try:
-            result = iq_cmd.send(block=True)
-        except Exception:
-            logger.info('XMPP timeout, reattempting')
-            result = iq_cmd.send(block=True)
-        payload = result.get_payload()
-        assert len(payload) == 1
-        action_cmd = payload[0]
-        if action_cmd.text == None:
-            return True
-        else:
-            return False
+        logger.debug("Changing channel to %s", channel)
+        params = {
+            "timestamp": 0,
+            'channel': str(channel)
+        }
+        response = await self._send_request(
+            'harmony.engine?changeChannel', params
+        )
 
+        return response['code'] == 200
 
-    def power_off(self):
+    async def power_off(self):
         """Turns the system off if it's on, otherwise it does nothing.
 
         Returns:
             True if the system becomes or is off
         """
-        activity = self.get_current_activity()
+        activity = await self.get_current_activity()
         if activity != -1:
-            return self.start_activity(-1)
+            return await self.start_activity(-1)
         else:
             return True
 

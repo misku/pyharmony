@@ -345,10 +345,20 @@ def show_current_activity(args):
         args (argparse): Argparse object containing required variables from command line
 
     """
-    client = get_client(args.harmony_ip, args.harmony_port)
-    config = client.get_config()
-    current_activity_id = client.get_current_activity()
-    client.disconnect(send_close=True)
+    client = get_client(args.harmony_ip)
+
+    if not client:
+        return
+
+    func = client.get_config()
+    config = run_in_loop_now('get_config', func)
+
+    func = client.get_current_activity()
+    current_activity_id = run_in_loop_now('get_config', func)
+
+    func = client.disconnect()
+    run_in_loop_now('disconnect', func)
+
     activity = [x for x in config['activity'] if int(x['id']) == current_activity_id][0]
     if type(activity) is dict:
         print(activity['label'])
@@ -397,18 +407,28 @@ def start_activity(args):
         args (argparse): Argparse object containing required variables from command line
 
     """
-    client = get_client(args.harmony_ip, args.harmony_port)
+    client = get_client(args.harmony_ip)
+
+    if not client:
+        return
+
     status = False
 
     if (args.activity.isdigit()) or (args.activity == '-1'):
-        status = client.start_activity(args.activity)
-        client.disconnect(send_close=True)
+        func = client.start_activity(args.activity)
+        status = run_in_loop_now('start_activity', func)
+
+        func = client.disconnect()
+        run_in_loop_now('disconnect', func)
+
         if status:
             print('Started Actvivity')
         else:
             logger.info('Activity start failed')
     else:
-        config = client.get_config()
+        func = client.get_config()
+        config = run_in_loop_now('get_config', func)
+
         activities = config['activity']
         labels_and_ids = dict([(a['label'], a['id']) for a in activities])
         matching = [label for label in list(labels_and_ids.keys())
@@ -416,8 +436,12 @@ def start_activity(args):
         if len(matching) == 1:
             activity = matching[0]
             logger.info('Found activity named %s (id %s)' % (activity, labels_and_ids[activity]))
-            status = client.start_activity(labels_and_ids[activity])
-        client.disconnect(send_close=True)
+            func = client.start_activity(labels_and_ids[activity])
+            status = run_in_loop_now('start_activity', func)
+
+        func = client.disconnect()
+        run_in_loop_now('disconnect', func)
+
         if status:
             print('Started:', args.activity)
         else:
@@ -431,9 +455,14 @@ def power_off(args):
         args (argparse): Argparse object containing required variables from command line
 
     """
-    client = get_client(args.harmony_ip, args.harmony_port)
-    status = client.power_off()
-    client.disconnect(send_close=True)
+    client = get_client(args.harmony_ip)
+
+    if not client:
+        return
+
+    status = run_in_loop_now('power_off', client.power_off())
+    run_in_loop_now('disconnect', client.disconnect())
+
     if status:
         print('Powered Off')
     else:
@@ -447,15 +476,44 @@ def send_command(args):
         args (argparse): Argparse object containing required variables from command line
 
     """
+    client = get_client(args.harmony_ip)
 
-    client = get_client(args.harmony_ip, args.harmony_port)
+    if not client:
+        return
+
     for i in range(args.repeat_num):
-        client.send_command(args.device_id, args.command)
+        func = client.send_command(args.device_id, args.command,
+                                   args.hold_secs)
+        config = run_in_loop_now('send_command', func)
+
         time.sleep(args.delay_secs)
 
-    client.disconnect(send_close=True)
-    print('Command Sent')
+    func = client.disconnect()
+    if run_in_loop_now('disconnect', func):
+        print('Command Sent')
+    else:
+        print('Failed to send command')
 
+def change_channel(args):
+    """Change channel
+
+    Args:
+        args (argparse): Argparse object containing required variables from command line
+
+    """
+    client = get_client(args.harmony_ip)
+
+    if not client:
+        return
+
+    status = run_in_loop_now('change_channel', client.change_channel(
+        args.channel))
+    run_in_loop_now('disconnect', client.disconnect())
+
+    if status:
+        print('Changed channel')
+    else:
+        logger.error('Change channel failed')
 
 def discover(args):
     hubs = harmony_discovery.discover()
@@ -514,6 +572,10 @@ def main():
     start_activity_parser.add_argument('--activity', help='Activity to switch to, id or label.')
     start_activity_parser.set_defaults(func=start_activity)
 
+    start_activity_parser = subparsers.add_parser('change_channel', help='Change channel.')
+    start_activity_parser.add_argument('--channel', help='Channel to change to')
+    start_activity_parser.set_defaults(func=change_channel)
+
     power_off_parser = subparsers.add_parser('power_off', help='Stop the activity.')
     power_off_parser.set_defaults(func=power_off)
 
@@ -525,6 +587,10 @@ def main():
     command_parser.add_argument('--command', help='IR Command to send to the device.')
     command_parser.add_argument('--repeat_num', type=int, default=1, help='Number of times to repeat the command. Defaults to 1')
     command_parser.add_argument('--delay_secs', type=float, default=0.4, help='Delay between sending repeated commands. Not used if only sending a single command. Defaults to 0.4 seconds')
+    command_parser.add_argument('--hold_secs', type=float, default=0.0,
+                                help='Delay between sending press and '
+                                     'sending release. Defaults to 0 '
+                                     'seconds')
     command_parser.set_defaults(func=send_command)
 
     args = parser.parse_args()
