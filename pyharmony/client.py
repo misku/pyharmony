@@ -99,7 +99,8 @@ class HarmonyClient():
         await self._websocket.wait_closed()
         self._websocket = None
 
-    async def _send_request(self, command, params=None):
+    async def _send_request(self, command, params=None,
+                            wait_for_response=True):
         """Send a payload request to Harmony Hub and return json response."""
         if params is None:
             params = {
@@ -119,6 +120,9 @@ class HarmonyClient():
 
         logger.debug("Sending payload: %s", payload)
         await self._websocket.send(json.dumps(payload))
+
+        if not wait_for_response:
+            return
 
         return await self._wait_response()
 
@@ -209,22 +213,16 @@ class HarmonyClient():
 
 
 
-    def sync(self):
+    async def sync(self):
         """Syncs the harmony hub with the web service.
         """
-        iq_cmd = self.Iq()
-        iq_cmd['type'] = 'get'
-        action_cmd = ET.Element('oa')
-        action_cmd.attrib['xmlns'] = 'connect.logitech.com'
-        action_cmd.attrib['mime'] = ('setup.sync')
-        iq_cmd.set_payload(action_cmd)
-        try:
-            result = iq_cmd.send(block=True)
-        except Exception:
-            logger.info('XMPP timeout, reattempting')
-            result = iq_cmd.send(block=True)
-        payload = result.get_payload()
-        assert len(payload) == 1
+
+        logger.debug("Performing sync")
+        response = await self._send_request(
+            'setup.sync'
+        )
+
+        return True
 
     async def send_command(self, device, command, command_delay=0):
         """Send a simple command to the Harmony Hub.
@@ -243,28 +241,24 @@ class HarmonyClient():
             "status": "press",
             "timestamp": '0',
             "verb": "render",
-            "action": {
-                "command": str(command),
-                "type": "IRCommand",
-                "deviceId": str(device)
-            }
+            "action": '{{"command": "{}",'
+                      '"type": "IRCommand",'
+                      '"deviceId": "{}"}}'.format(command, device)
         }
 
-        response = await self._send_request(
-            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction', params
+        await self._send_request(
+            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction',
+            params, False
         )
-
-        if response['code'] != 200:
-            return False
 
         if command_delay > 0:
-            asyncio.sleep(command_delay)
+            await asyncio.sleep(command_delay)
 
         params['status'] = 'release'
-        response = await self._send_request(
-            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction', params
+        await self._send_request(
+            'vnd.logitech.harmony/vnd.logitech.harmony.engine?holdAction',
+            params, False
         )
-        return response['code'] == 200
 
     async def change_channel(self, channel):
         """Changes a channel.

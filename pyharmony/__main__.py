@@ -528,9 +528,13 @@ def sync(args):
     Returns:
         Completion status
     """
-    client = get_client(args.harmony_ip, args.harmony_port)
-    client.sync()
-    client.disconnect(send_close=True)
+    client = get_client(args.harmony_ip)
+
+    if not client:
+        return
+    run_in_loop_now('sync', client.sync())
+    run_in_loop_now('disconnect', client.disconnect())
+
     print('Sync complete')
 
 
