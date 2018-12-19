@@ -88,7 +88,7 @@ class HarmonyClient():
                 '{}/vnd.logitech.statedigest?get'.format(DEFAULT_CMD)
             )
 
-            if response['code'] != 200:
+            if response.get('code') != 200:
                 await self.disconnect()
                 return False
 
@@ -97,13 +97,12 @@ class HarmonyClient():
 
     async def disconnect(self, send_close=None):
         """Disconnect from Hub"""
-        logger.debug("Disconnecting")
+        logger.debug("Disconnecting from %s", self._ip_address)
         await self._websocket.close()
-        await self._websocket.wait_closed()
         self._websocket = None
 
     async def _send_request(self, command, params=None,
-                            wait_for_response=True):
+                            wait_for_response=True, msgid=None):
         """Send a payload request to Harmony Hub and return json response."""
         # Make sure we're connected.
         await self._perform_connect()
@@ -114,7 +113,8 @@ class HarmonyClient():
                 "format": "json"
             }
 
-        msgid = self._msgid = self._msgid + 1
+        if not msgid:
+            msgid = self._msgid = self._msgid + 1
 
         payload = {
             "hubId"  : self._remote_id,
@@ -131,18 +131,18 @@ class HarmonyClient():
 
         if not wait_for_response:
             return
+        return await self._wait_response(msgid)
 
-        while True:
-            response = await self._wait_response()
-            if response.get('cmd') == command and response.get('id') == msgid:
-                return response
-
-    async def _wait_response(self):
+    async def _wait_response(self, msgid):
         """Await message on web socket"""
         logger.debug("Waiting for response")
-        response = await self._websocket.recv()
-        logger.debug("Received response: %s", response)
-        return json.loads(response)
+        while True:
+            response_json = await self._websocket.recv()
+            response = json.loads(response_json)
+            logger.debug("Received response: %s", response)
+            if response.get('id') == msgid:
+                return response
+
 
     async def get_config(self):
         """Retrieves the Harmony device configuration.
@@ -155,8 +155,8 @@ class HarmonyClient():
             'vnd.logitech.harmony/vnd.logitech.harmony.engine?config'
         )
 
-        assert response['code'] == 200
-        return response['data']
+        assert response.get('code') == 200
+        return response.get('data')
 
     async def get_current_activity(self):
         """Retrieves the current activity ID.
@@ -170,7 +170,7 @@ class HarmonyClient():
             '?getCurrentActivity'
         )
 
-        assert response['code'] == 200
+        assert response.get('code') == 200
         activity = response['data']['result']
         return int(activity)
 
@@ -192,12 +192,36 @@ class HarmonyClient():
             },
             "activityId": str(activity_id)
         }
+        msgid = self._msgid = self._msgid + 1
         response = await self._send_request(
-            'harmony.activityengine?runactivity', params
+            'harmony.activityengine?runactivity', params, True, msgid
         )
 
-        # Response of 200 means success.
-        return response['code'] == 200
+        # Wait for the activity to complete.
+        while True:
+            # Make sure response is related to start activity.
+            if not response.get('cmd'):
+                response = await self._wait_response(msgid)
+                continue
+
+            if response.get('cmd') == 'harmony.engine?startActivityFinished':
+                return True
+
+            if response.get('cmd') != 'harmony.engine?startActivity' and \
+                    response.get('cmd') != 'harmony.engine?helpdiscretes':
+                response = await self._wait_response(msgid)
+                continue
+
+            # Response of 200 means success.
+            if response.get('code') == 200:
+                return True
+
+            # Response of 100 means in progress
+            # Any other response considered a failure.
+            if response.get('code') != 100:
+                return False
+
+            response = await self._wait_response(msgid)
 
     async def sync(self):
         """Syncs the harmony hub with the web service.
@@ -221,8 +245,8 @@ class HarmonyClient():
         Returns:
             None if successful
         """
-        logger.debug("Sending command %s to device %s",
-                     command, device)
+        logger.debug("Sending command %s to device %s with delay %ss",
+                     command, device, command_delay)
         params = {
             "status": "press",
             "timestamp": '0',
@@ -262,7 +286,7 @@ class HarmonyClient():
             'harmony.engine?changeChannel', params
         )
 
-        return response['code'] == 200
+        return response.get('code') == 200
 
     async def power_off(self):
         """Turns the system off if it's on, otherwise it does nothing.
