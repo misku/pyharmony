@@ -178,14 +178,12 @@ def ha_start_activity(ip, port, config, activity):
 
     # provided activity string needs to be translated to activity ID from config
     else:
-        activities = config['activity']
-        labels_and_ids = dict([(a['label'], a['id']) for a in activities])
-        matching = [label for label in list(labels_and_ids.keys())
-                    if activity.lower() in label.lower()]
-        if len(matching) == 1:
-            activity = matching[0]
-            logger.info('Found activity named %s (id %s)' % (activity, labels_and_ids[activity]))
-            status = client.start_activity(labels_and_ids[activity])
+        activity_id = client.get_activity_id(activity)
+        if activity_id:
+            logger.info('Found activity named %s (id %s)' % (activity,
+                                                             activity_id
+                                                             ))
+            status = client.start_activity(activity_id)
 
     client.disconnect(send_close=True)
     if status:
@@ -327,6 +325,7 @@ def show_config(args):
 
     func = client.disconnect()
     run_in_loop_now('disconnect', func)
+    print(json.dumps(client.json_config, sort_keys=True, indent=4))
     pprint(config)
 
 
@@ -351,12 +350,20 @@ def show_current_activity(args):
     func = client.disconnect()
     run_in_loop_now('disconnect', func)
 
-    activity = [x for x in config['activity'] if int(x['id']) == current_activity_id][0]
-    if type(activity) is dict:
-        print(activity['label'])
+    activity = client.get_activity_name(current_activity_id)
+    if activity:
+        print(activity)
     else:
         logger.error('Unable to retrieve current activity')
         print('Unknown')
+
+#    activity = [x for x in config['activity'] if int(x['id']) ==
+    #    current_activity_id][0]
+#    if type(activity) is dict:
+#        print(activity['label'])
+#    else:
+#        logger.error('Unable to retrieve current activity')
+#        print('Unknown')
 
 
 def activity_name(config, activity_id):
@@ -421,14 +428,11 @@ def start_activity(args):
         func = client.get_config()
         config = run_in_loop_now('get_config', func)
 
-        activities = config['activity']
-        labels_and_ids = dict([(a['label'], a['id']) for a in activities])
-        matching = [label for label in list(labels_and_ids.keys())
-                    if args.activity.lower() in label.lower()]
-        if len(matching) == 1:
-            activity = matching[0]
-            logger.info('Found activity named %s (id %s)' % (activity, labels_and_ids[activity]))
-            func = client.start_activity(labels_and_ids[activity])
+        activity_id = client.get_activity_id(args.activity)
+        if activity_id:
+            logger.info('Found activity named %s (id %s)' % (args.activity,
+                                                             activity_id))
+            func = client.start_activity(activity_id)
             status = run_in_loop_now('start_activity', func)
 
         func = client.disconnect()

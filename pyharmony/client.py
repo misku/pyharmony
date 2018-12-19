@@ -28,6 +28,56 @@ class HarmonyClient():
         self._account_id = None
         self._websocket = None
         self._msgid = 0
+        self._config = None
+        self._activities = None
+        self._devices = None
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def json_config(self):
+        """Returns configuration as a dictionary (json)"""
+
+        result = {}
+
+        activity_dict = {}
+        for activity in self._config.get('activity'):
+            activity_dict.update({activity['id']: activity['label']})
+
+        result.update(Activities=activity_dict)
+
+        devices_dict = {}
+        for device in self._config.get('device'):
+            command_list = []
+            for controlGroup in device['controlGroup']:
+                for function in controlGroup['function']:
+                    action = json.loads(function['action'])
+                    command_list.append(action.get('command'))
+
+            device_dict = {
+                'id'      : device.get('id'),
+                'commands': command_list
+            }
+
+            devices_dict.update({device.get('label'): device_dict})
+
+        result.update(Devices=devices_dict)
+
+        return result
+
+    @property
+    def name(self):
+        return self._friendly_name
+
+    @property
+    def email(self):
+        return self._email
+
+    @property
+    def account_id(self):
+        return self._account_id
 
     async def retrieve_hub_info(self):
         """Retrieve the harmony Hub information."""
@@ -156,7 +206,22 @@ class HarmonyClient():
         )
 
         assert response.get('code') == 200
-        return response.get('data')
+
+        self._config = response.get('data')
+
+        self._activities = list(
+            {'name': a['label'],
+             'name_match': a['label'].lower(),
+             'id': int(a['id'])
+             } for a in self._config.get('activity'))
+
+        self._devices = list(
+            {'name': a['label'],
+             'name_match': a['label'].lower(),
+             'id': int(a['id'])
+             } for a in self._config.get('device'))
+
+        return self._config
 
     async def get_current_activity(self):
         """Retrieves the current activity ID.
@@ -309,6 +374,35 @@ class HarmonyClient():
                 activity_callback(int(activity_id))
 
         self.registerHandler(Callback('Activity Finished', MatchHarmonyEvent('startActivityFinished'), hub_event))
+
+    @staticmethod
+    def search(item_name, item, list):
+        """Search for the item in the list."""
+        return next(
+            (element for element in list
+             if element[item_name] == item), None)
+
+    def get_activity_id(self, activity_name):
+        """Find the activity ID for the provided activity name."""
+        item = self.search('name_match', activity_name.lower(),
+                           self._activities)
+        return item.get('id') if item else None
+
+    def get_activity_name(self, activity_id):
+        """Find the activity name for the provided ID."""
+        item = self.search('id', activity_id, self._activities)
+        return item.get('name') if item else None
+
+    def get_device_id(self, device_name):
+        """Find the device ID for the provided device name."""
+        item = self.search('name_match', device_name.lower(), self._devices)
+        return item.get('id') if item else None
+
+    def get_device_name(self, device_id):
+        """Find the device name for the provided ID."""
+        item = self.search('id', device_id, self._devices)
+        return item.get('name') if item else None
+
 
 
 # class MatchHarmonyEvent(MatcherBase):
