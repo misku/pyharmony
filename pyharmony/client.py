@@ -27,6 +27,7 @@ class HarmonyClient():
         self._email = None
         self._account_id = None
         self._websocket = None
+        self._msgid = 0
 
     async def retrieve_hub_info(self):
         """Retrieve the harmony Hub information."""
@@ -113,12 +114,14 @@ class HarmonyClient():
                 "format": "json"
             }
 
+        msgid = self._msgid = self._msgid + 1
+
         payload = {
             "hubId"  : self._remote_id,
             "timeout": 30,
             "hbus"   : {
                 "cmd": command,
-                "id" : 1022244803,
+                "id" : msgid,
                 "params": params
             }
         }
@@ -129,7 +132,10 @@ class HarmonyClient():
         if not wait_for_response:
             return
 
-        return await self._wait_response()
+        while True:
+            response = await self._wait_response()
+            if response.get('cmd') == command and response.get('id') == msgid:
+                return response
 
     async def _wait_response(self):
         """Await message on web socket"""
@@ -190,34 +196,8 @@ class HarmonyClient():
             'harmony.activityengine?runactivity', params
         )
 
-        # Wait for the activity to complete.
-        while True:
-            # Make sure response is related to start activity.
-            if not response.get('cmd'):
-                response = await self._wait_response()
-                continue
-
-            if response['cmd'] == 'harmony.engine?startActivityFinished':
-                return True
-
-            if response['cmd'] != 'harmony.engine?startActivity' and\
-               response['cmd'] != 'harmony.engine?helpdiscretes':
-                response = await self._wait_response()
-                continue
-
-            # Response of 200 means success.
-            if response['code'] == 200:
-                return True
-
-
-            # Response of 100 means in progress
-            # Any other response considered a failure.
-            if response['code'] != 100:
-                return False
-
-            response = await self._wait_response()
-
-
+        # Response of 200 means success.
+        return response['code'] == 200
 
     async def sync(self):
         """Syncs the harmony hub with the web service.
