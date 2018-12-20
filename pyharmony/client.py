@@ -8,11 +8,13 @@ import re
 import asyncio
 import websockets
 from aiohttp import ClientSession
+from urllib.parse import urlparse
 
 import logging
 
 DEFAULT_CMD = 'vnd.logitech.connect'
 DEFAULT_DISCOVER_STRING = '_logitech-reverse-bonjour._tcp.local.'
+DEFAULT_DOMAIN = 'svcs.myharmony.com'
 DEFAULT_HUB_PORT = '8088'
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ class HarmonyClient():
         self._ip_address = ip_address
         self._friendly_name = None
         self._remote_id = None
+        self._domain = DEFAULT_DOMAIN
         self._email = None
         self._account_id = None
         self._websocket = None
@@ -100,6 +103,9 @@ class HarmonyClient():
                 json_response = await response.json()
                 self._friendly_name = json_response['data']['friendlyName']
                 self._remote_id = str(json_response['data']['remoteId'])
+                domain = urlparse(json_response['data']['discoveryServerUri'])
+                self._domain = domain.netloc if domain.netloc else
+                    DEFAULT_DOMAIN
                 self._email = json_response['data']['email']
                 self._account_id = str(json_response['data']['accountId'])
 
@@ -125,8 +131,8 @@ class HarmonyClient():
         logger.debug("Connecting to %s for hub %s",
                      self._ip_address, self._remote_id)
         self._websocket = await websockets.connect(
-            'ws://{}:{}/?domain=svcs.myharmony.com&hubId={}'.format(
-            self._ip_address, DEFAULT_HUB_PORT, self._remote_id
+            'ws://{}:{}/?domain={}&hubId={}'.format(
+            self._ip_address, DEFAULT_HUB_PORT, self._domain, self._remote_id
             )
         )
 
