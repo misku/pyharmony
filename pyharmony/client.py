@@ -104,7 +104,7 @@ class HarmonyClient():
                 self._friendly_name = json_response['data']['friendlyName']
                 self._remote_id = str(json_response['data']['remoteId'])
                 domain = urlparse(json_response['data']['discoveryServerUri'])
-                self._domain = domain.netloc if domain.netloc else
+                self._domain = domain.netloc if domain.netloc else \
                     DEFAULT_DOMAIN
                 self._email = json_response['data']['email']
                 self._account_id = str(json_response['data']['accountId'])
