@@ -489,6 +489,31 @@ def send_command(args):
 
     print('Command Sent')
 
+def send_commands(args):
+    """Connects to the Harmony and sends multiple simple commands.
+    Args:
+        args (argparse): Argparse object containing required variables from command line
+
+    Returns:
+          Completion status
+    """
+    client = get_client(args.harmony_ip)
+
+    if not client:
+        return
+
+    for i in range(args.repeat_num):
+        for command in args.commands:
+            func = client.send_command(args.device_id, command, args.hold_secs)
+            run_in_loop_now('send_command', func)
+
+    time.sleep(args.delay_secs)
+
+    func = client.disconnect()
+    run_in_loop_now('disconnect', func)
+
+    print('Commands Sent')
+
 def change_channel(args):
     """Change channel
 
@@ -591,6 +616,17 @@ def main():
                                      'sending release. Defaults to 0 '
                                      'seconds')
     command_parser.set_defaults(func=send_command)
+
+    commands_parser = subparsers.add_parser('send_commands', help='Send multiple commands.')
+    commands_parser.add_argument('--device_id', help='Specify the device id to which we will send the command.')
+    commands_parser.add_argument('--commands', nargs='+', help='Space-separated IR Commands to send to the device.')
+    commands_parser.add_argument('--repeat_num', type=int, default=1, help='Number of times to repeat commands. Defaults to 1')
+    commands_parser.add_argument('--delay_secs', type=float, default=0.4, help='Delay between sending individual commands (even when repeated). Not used if only sending a single command. Defaults to 0.4 seconds')
+    commands_parser.add_argument('--hold_secs', type=float, default=0.0,
+                                help='Delay between sending press and '
+                                     'sending release. Defaults to 0 '
+                                     'seconds')
+    commands_parser.set_defaults(func=send_commands)
 
     args = parser.parse_args()
 
