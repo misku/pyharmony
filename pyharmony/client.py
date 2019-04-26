@@ -24,7 +24,6 @@ class HarmonyClient():
 
     def __init__(self, ip_address):
         self._ip_address = ip_address
-        self._friendly_name = None
         self._remote_id = None
         self._domain = DEFAULT_DOMAIN
         self._email = None
@@ -72,7 +71,7 @@ class HarmonyClient():
 
     @property
     def name(self):
-        return self._friendly_name
+        return 'no friendly name any more'
 
     @property
     def email(self):
@@ -87,23 +86,26 @@ class HarmonyClient():
         logger.debug("Retrieving Harmony Hub information.")
         url = 'http://{}:{}/'.format(self._ip_address, DEFAULT_HUB_PORT)
         headers = {
-            'Origin': 'http://localhost.nebula.myharmony.com',
+            'Origin': 'http://sl.dhg.myharmony.com',
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Accept-Charset': 'utf-8',
         }
         json_request = {
             "id ": 1,
-            "cmd": "connect.discoveryinfo?get",
+            "cmd": "setup.account?getProvisionInfo",
             "params": {}
         }
         async with ClientSession() as session:
             async with session.post(
                 url, json=json_request, headers=headers) as response:
-                json_response = await response.json()
-                self._friendly_name = json_response['data']['friendlyName']
-                self._remote_id = str(json_response['data']['remoteId'])
-                domain = urlparse(json_response['data']['discoveryServerUri'])
+                data = await response.read()
+                json_response = json.loads(data)
+
+                """print(json.dumps(json_response, indent=2, sort_keys=True))"""
+
+                self._remote_id = str(json_response['data']['activeRemoteId'])
+                domain = urlparse(json_response['data']['discoveryServer'])
                 self._domain = domain.netloc if domain.netloc else \
                     DEFAULT_DOMAIN
                 self._email = json_response['data']['email']
